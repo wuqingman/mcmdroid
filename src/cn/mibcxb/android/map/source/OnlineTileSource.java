@@ -1,5 +1,6 @@
 package cn.mibcxb.android.map.source;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -12,7 +13,8 @@ import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import cn.mibcxb.android.map.MapTile;
-import cn.mibcxb.android.map.cache.DatabaseTileCache;
+import cn.mibcxb.android.map.cache.DatabaseCache;
+import cn.mibcxb.android.map.cache.ExtTileCache;
 import cn.mibcxb.android.os.Logger;
 
 public abstract class OnlineTileSource extends TileSource {
@@ -21,13 +23,21 @@ public abstract class OnlineTileSource extends TileSource {
 
     protected final String[] urls;
     protected final Random random = new Random();
-    protected final DatabaseTileCache cache;
+
+    protected File cacheDir;
+    protected ExtTileCache cache;
 
     public OnlineTileSource(Context context, String name, int minZoomLevel,
             int maxZoomLevel, String... urls) {
         super(context, name, minZoomLevel, maxZoomLevel);
         this.urls = urls;
-        this.cache = new DatabaseTileCache(name);
+
+        File cacheDir = context.getExternalCacheDir();
+        if (cacheDir == null || !cacheDir.exists()) {
+            cacheDir = context.getCacheDir();
+        }
+        this.cacheDir = cacheDir;
+        this.cache = createTileCache();
     }
 
     @Override
@@ -39,6 +49,13 @@ public abstract class OnlineTileSource extends TileSource {
         return drawable;
     }
 
+    @Override
+    public void detach() {
+        if (cache != null) {
+            cache.close();
+        }
+    }
+
     protected String getBaseUrl() {
         if (null != urls && urls.length > 0) {
             return urls[random.nextInt(urls.length)];
@@ -47,7 +64,9 @@ public abstract class OnlineTileSource extends TileSource {
     }
 
     protected void clearCache() {
-        cache.clear();
+        if (cache != null) {
+            cache.clear();
+        }
     }
 
     protected Drawable getOnlineTile(MapTile tile) {
@@ -56,9 +75,8 @@ public abstract class OnlineTileSource extends TileSource {
         }
 
         Bitmap bitmap = null;
-        byte[] data = cache.get(tile);
-        if (data != null) {
-            bitmap = decode(data);
+        if (cache != null) {
+            bitmap = cache.read(tile);
             if (bitmap != null) {
                 LOGGER.d("Load from cache: " + tile.toString());
                 return getDrawable(bitmap);
@@ -86,7 +104,9 @@ public abstract class OnlineTileSource extends TileSource {
                 bitmap = decode(is);
                 if (bitmap != null) {
                     LOGGER.d("Load from internet: " + tile.toString());
-                    cache.put(tile, bitmap);
+                    if (cache != null && cache.write(tile, bitmap)) {
+                        LOGGER.d("Save tile ok: " + tile.toString());
+                    }
                 }
             }
         } catch (MalformedURLException e) {
@@ -103,6 +123,14 @@ public abstract class OnlineTileSource extends TileSource {
         }
 
         return getDrawable(bitmap);
+    }
+
+    protected ExtTileCache createTileCache() {
+        if (cacheDir != null && cacheDir.exists()) {
+            File file = new File(cacheDir, name + File.separator + "tiles.db");
+            return new DatabaseCache(file.getAbsolutePath());
+        }
+        return null;
     }
 
     protected abstract String getTileUrl(MapTile tile);

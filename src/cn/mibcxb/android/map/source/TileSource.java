@@ -77,6 +77,9 @@ public abstract class TileSource {
         return drawable;
     }
 
+    public void detach() {
+    }
+
     public abstract Drawable getDrawable(MapTile tile);
 
     @Override
