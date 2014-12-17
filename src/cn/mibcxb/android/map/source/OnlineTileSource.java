@@ -11,13 +11,16 @@ import java.util.Random;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.drawable.Drawable;
+import android.net.NetworkInfo;
 import android.text.TextUtils;
 import cn.mibcxb.android.map.MapTile;
 import cn.mibcxb.android.map.cache.DatabaseCache;
 import cn.mibcxb.android.map.cache.ExtTileCache;
 import cn.mibcxb.android.os.Logger;
+import cn.mibcxb.android.util.NetworkWatcher.NetworkListener;
 
-public abstract class OnlineTileSource extends TileSource {
+public abstract class OnlineTileSource extends TileSource implements
+        NetworkListener {
     private static final Logger LOGGER = Logger
             .createLogger(OnlineTileSource.class);
 
@@ -26,6 +29,7 @@ public abstract class OnlineTileSource extends TileSource {
 
     protected File cacheDir;
     protected ExtTileCache cache;
+    protected boolean networkEnabled = false;
 
     public OnlineTileSource(Context context, String name, int minZoomLevel,
             int maxZoomLevel, String... urls) {
@@ -56,6 +60,15 @@ public abstract class OnlineTileSource extends TileSource {
         }
     }
 
+    @Override
+    public void onNetworkChanged(NetworkInfo info) {
+        if (info != null && info.isAvailable()) {
+            networkEnabled = true;
+        } else {
+            networkEnabled = false;
+        }
+    }
+
     protected String getBaseUrl() {
         if (null != urls && urls.length > 0) {
             return urls[random.nextInt(urls.length)];
@@ -81,6 +94,10 @@ public abstract class OnlineTileSource extends TileSource {
                 LOGGER.d("Load from cache: " + tile.toString());
                 return getDrawable(bitmap);
             }
+        }
+
+        if (!networkEnabled) {
+            return null;
         }
 
         String tileUrl = getTileUrl(tile);
